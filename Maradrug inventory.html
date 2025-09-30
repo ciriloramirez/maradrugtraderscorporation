@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Mara Drug Traders Corporation - Inventory</title>
+  <style>
+    body { font-family: Arial, sans-serif; background:#f8f9fa; margin:20px; }
+    h1 { text-align:center; margin-bottom:20px; }
+    .card { background:#fff; padding:20px; border-radius:12px; box-shadow:0 2px 6px rgba(0,0,0,0.1); margin-bottom:20px; }
+    input, select, button { padding:8px; margin:4px; border-radius:6px; border:1px solid #ccc; }
+    button { cursor:pointer; background:#4CAF50; color:#fff; border:none; }
+    button:hover { background:#45a049; }
+    table { width:100%; border-collapse:collapse; margin-top:10px; }
+    th, td { padding:8px; border:1px solid #ddd; text-align:center; font-size:14px; }
+    th { background:#4CAF50; color:#fff; }
+    .low-stock { background:#ffe6e6; }
+    .reorder-row { background:#fff3cd; }
+    .badge { display:inline-block; padding:2px 6px; background:#ff9800; color:#fff; border-radius:6px; font-size:11px; margin-left:4px; }
+    .modal { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); justify-content:center; align-items:center; }
+    .modal-content { background:#fff; padding:20px; border-radius:12px; width:320px; box-shadow:0 2px 8px rgba(0,0,0,0.3); text-align:center; }
+    .modal-content input, .modal-content select { width:90%; margin:6px 0; }
+    .close-btn { float:right; cursor:pointer; font-weight:bold; color:#444; }
+    @media(max-width:600px){ .modal-content { width:90%; } }
+    .actions-btn { margin:2px; padding:6px 10px; border-radius:6px; border:none; cursor:pointer; }
+    .btn-edit { background:#ffc107; color:#000; }
+    .btn-reorder { background:#17a2b8; color:#fff; }
+    .btn-delete { background:#f44336; color:#fff; }
+  </style>
+</head>
+<body>
+  <h1>Mara Drug Traders Corporation</h1>
+
+  <!-- Add Item -->
+  <div class="card" id="addCard">
+    <h2>Add Medicine</h2>
+    <input type="date" id="date">
+    <input type="text" id="code" placeholder="Code">
+    <input type="text" id="name" placeholder="Medicine Name">
+    <input type="text" id="shelves" placeholder="Shelves">
+    <input type="number" id="stock" placeholder="Stock" min="0">
+    <select id="supplier"></select>
+    <button style="padding:4px 8px; font-size:14px;" onclick="openSupplierModal()">+</button>
+    <button style="padding:4px 8px; font-size:14px;" onclick="openManageSuppliers()">⚙</button>
+    <input type="number" id="price" placeholder="Unit Price" min="0" step="0.01">
+    <button onclick="addItem()">Add</button>
+  </div>
+
+  <!-- Inventory -->
+  <div class="card">
+    <h2>Inventory</h2>
+    <input type="text" id="search" placeholder="Search by code, name or supplier..." oninput="searchItem()">
+    <table id="inventoryTable">
+      <thead>
+        <tr>
+          <th>Date</th><th>Code</th><th>Medicine</th><th>Shelves</th><th>Stock</th>
+          <th>Supplier</th><th>Price</th><th>Status</th><th>Actions</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+
+    <div style="margin-top:10px; display:flex; flex-wrap:wrap; gap:8px;">
+      <button onclick="generatePDF('Quali-Meds')" style="flex:1; min-width:120px;">Export Quali-Meds PDF</button>
+      <button onclick="generatePDF('Five Jewels')" style="flex:1; min-width:120px;">Export Five Jewels PDF</button>
+      <button onclick="generatePDF('Prime Health')" style="flex:1; min-width:120px;">Export Prime Health PDF</button>
+      <button onclick="generatePDF('Fusion/Telton')" style="flex:1; min-width:120px;">Export Fusion/Telton PDF</button>
+      <button onclick="resetReorder()" style="background:#f44336; flex:1; min-width:120px;">Reset Reorder</button>
+    </div>
+  </div>
+
+  <!-- Edit Modal -->
+  <div id="editModal" class="modal">
+    <div class="modal-content">
+      <span class="close-btn" onclick="closeModal('editModal')">×</span>
+      <h3>Edit Item</h3>
+      <input type="date" id="editDate">
+      <input type="text" id="editCode" placeholder="Code">
+      <input type="text" id="editName" placeholder="Name">
+      <input type="text" id="editShelves" placeholder="Shelves">
+      <input type="number" id="editStock" placeholder="Stock" min="0">
+      <select id="editSupplier"></select>
+      <input type="number" id="editPrice" placeholder="Price" min="0" step="0.01">
+      <div style="margin-top:8px;">
+        <button class="actions-btn btn-edit" onclick="saveEdit()">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Reorder Modal -->
+  <div id="reorderModal" class="modal">
+    <div class="modal-content">
+      <span class="close-btn" onclick="closeModal('reorderModal')">×</span>
+      <h3>Reorder Item</h3>
+      <p id="reorderName" style="font-weight:bold;"></p>
+      <input type="number" id="reorderQty" placeholder="Quantity" min="1">
+      <select id="reorderUnit">
+        <option>pcs</option>
+        <option>bot</option>
+        <option>box</option>
+        <option>flap</option>
+      </select>
+      <div style="margin-top:8px;">
+        <button class="actions-btn btn-reorder" onclick="saveReorder()">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add Supplier Modal -->
+  <div id="supplierModal" class="modal">
+    <div class="modal-content">
+      <span class="close-btn" onclick="closeModal('supplierModal')">×</span>
+      <h3>Register New Supplier</h3>
+      <input type="text" id="newSupplierName" placeholder="Supplier Name">
+      <div style="margin-top:8px;">
+        <button class="actions-btn" onclick="saveNewSupplier()">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Manage Suppliers Modal -->
+  <div id="manageSuppliersModal" class="modal">
+    <div class="modal-content">
+      <span class="close-btn" onclick="closeModal('manageSuppliersModal')">×</span>
+      <h3>Manage Suppliers</h3>
+      <div id="supplierList" style="text-align:left; max-height:260px; overflow:auto;"></div>
+    </div>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script>
+    // Data
+    let inventory = JSON.parse(localStorage.getItem("inventoryData")) || [];
+    let suppliers = JSON.parse(localStorage.getItem("suppliers")) || ["Quali-Meds","Five Jewels","Prime Health","Fusion/Telton"];
+    let editIndex = null, reorderIndex = null;
+
+    // Save data to localStorage
+    function saveData(){
+      localStorage.setItem("inventoryData", JSON.stringify(inventory));
+      localStorage.setItem("suppliers", JSON.stringify(suppliers));
+    }
+
+    // Set today's date in add form
+    function setToday(){
+      const d = new Date().toISOString().split("T")[0];
+      if(!document.getElementById("date").value) document.getElementById("date").value = d;
+    }
+
+    // Populate supplier selects
+    function renderSupplierOptions(){
+      let sel = document.getElementById("supplier");
+      sel.innerHTML = '<option value="">Select Supplier</option>';
+      suppliers.forEach(s => { let opt = document.createElement("option"); opt.text = s; opt.value = s; sel.add(opt); });
+
+      let editSel = document.getElementById("editSupplier");
+      editSel.innerHTML = '<option value="">Select Supplier</option>';
+      suppliers.forEach(s => { let opt = document.createElement("option"); opt.text = s; opt.value = s; editSel.add(opt); });
+    }
+
+    // Supplier modals
+    function openSupplierModal(){ document.getElementById("newSupplierName").value = ""; document.getElementById("supplierModal").style.display = "flex"; }
+    function openManageSuppliers(){ renderSupplierList(); document.getElementById("manageSuppliersModal").style.display='flex'; }
+
+    function saveNewSupplier(){
+      let name = document.getElementById("newSupplierName").value.trim();
+      if(!name){ alert("Enter supplier name!"); return; }
+      if(suppliers.includes(name)){ alert("Supplier already exists!"); return; }
+      suppliers.push(name);
+      saveData(); renderSupplierOptions();
+      document.getElementById("supplier").value = name; // auto-select new supplier
+      closeModal('supplierModal');
+    }
+
+    function renderSupplierList(){
+      let container = document.getElementById("supplierList");
+      container.innerHTML = "";
+      suppliers.forEach((s, i) => {
+        let div = document.createElement("div");
+        div.style.marginBottom="8px";
+        div.innerHTML = `
+          <input type="text" value="${s}" onchange="updateSupplier(${i}, this.value)" style="width:68%;">
+          <button style="margin-left:6px; background:#f44336; color:#fff; padding:6px 8px; border:none; border-radius:6px;" onclick="deleteSupplier(${i})">Delete</button>
+        `;
+        container.appendChild(div);
+      });
+    }
+
+    function updateSupplier(index, newName){
+      newName=newName.trim();
+      if(!newName){ alert("Supplier name cannot be empty"); renderSupplierList(); return; }
+      if(suppliers.includes(newName)){ alert("Supplier already exists!"); renderSupplierList(); return; }
+      let oldName = suppliers[index];
+      suppliers[index]=newName;
+      inventory.forEach(item=>{ if(item.supplier===oldName) item.supplier=newName; });
+      saveData(); renderSupplierOptions(); renderTable(); renderSupplierList();
+    }
+
+    function deleteSupplier(index){
+      let name = suppliers[index];
+      let inInventory = inventory.some(item => item.supplier === name);
+      let msg = inInventory ? `${name} is used in inventory. Delete anyway?` : `Are you sure you want to delete ${name}?`;
+      if(!confirm(msg)) return;
+      if(inInventory){
+        inventory.forEach(item => { if(item.supplier === name) item.supplier = ""; });
+      }
+      suppliers.splice(index,1);
+      saveData(); renderSupplierOptions(); renderTable(); renderSupplierList();
+    }
+
+    // Render inventory table
+    function renderTable(){
+      let tbody=document.querySelector("#inventoryTable tbody"); tbody.innerHTML="";
+      // sort by name for consistent view
+      inventory.sort((a,b)=> (a.name || "").localeCompare(b.name || ""));
+      inventory.forEach((item,i)=>{
+        let row=tbody.insertRow();
+        row.insertCell().innerText = item.date || "";
+        row.insertCell().innerText = item.code || "-";
+        row.insertCell().innerText = item.name || "";
+        row.insertCell().innerText = item.shelves || "";
+        let stockCell = row.insertCell(); stockCell.innerText = (typeof item.stock !== "undefined" ? item.stock : "");
+        if(Number(item.stock) <= 10) row.classList.add("low-stock");
+        row.insertCell().innerText = item.supplier || "";
+        row.insertCell().innerText = "₱"+((item.price || 0).toFixed ? item.price.toFixed(2) : Number(item.price || 0).toFixed(2));
+        let status = row.insertCell();
+        if(item.reorder){
+          row.classList.add("reorder-row");
+          status.innerHTML = `<span class="badge">For Reorder</span>`;
+        } else status.innerText = "-";
+        let actions = row.insertCell();
+        actions.innerHTML = `
+          <button class="actions-btn btn-edit" onclick="openEdit(${i})">Edit</button>
+          <button class="actions-btn btn-reorder" onclick="openReorder(${i})">Reorder</button>
+          <button class="actions-btn btn-delete" onclick="deleteItem(${i})">Delete</button>
+        `;
+      });
+    }
+
+    // Add item
+    function addItem(){
+      let d=document.getElementById("date").value,
+          c=document.getElementById("code").value.trim(),
+          n=document.getElementById("name").value.trim(),
+          sh=document.getElementById("shelves").value.trim(),
+          st=parseInt(document.getElementById("stock").value),
+          sup=document.getElementById("supplier").value,
+          p=parseFloat(document.getElementById("price").value)||0;
+      // validation
+      if(!d || !n || isNaN(st) || sup === ""){ alert("Fill required fields! (date, medicine name, stock, supplier)"); return; }
+      if(st < 0){ alert("Stock cannot be negative!"); return; }
+      // create item object
+      let newItem = { date:d, code:c, name:n, shelves:sh, stock:st, supplier:sup, price:p };
+      // ensure reorder flag isn't incorrectly present
+      if(newItem.reorder && newItem.stock >= newItem.reorder.qty){ delete newItem.reorder; }
+      inventory.push(newItem);
+      saveData(); renderTable();
+      // clear inputs
+      document.querySelectorAll("#addCard input").forEach(i => { if(i.type !== "date") i.value = ""; });
+      document.getElementById("supplier").value = "";
+      setToday();
+    }
+
+    // Delete item
+    function deleteItem(i){
+      if(confirm("Delete " + (inventory[i].name || "item") + " ?")){
+        inventory.splice(i,1);
+        saveData(); renderTable();
+      }
+    }
+
+    // Edit item modal
+    function openEdit(i){
+      editIndex = i; let it = inventory[i] || {};
+      document.getElementById("editDate").value = it.date || "";
+      document.getElementById("editCode").value = it.code || "";
+      document.getElementById("editName").value = it.name || "";
+      document.getElementById("editShelves").value = it.shelves || "";
+      document.getElementById("editStock").value = it.stock || 0;
+      document.getElementById("editSupplier").value = it.supplier || "";
+      document.getElementById("editPrice").value = it.price || 0;
+      document.getElementById("editModal").style.display = "flex";
+    }
+
+    function saveEdit(){
+      if(editIndex === null) return;
+      let it = inventory[editIndex];
+      it.date = document.getElementById("editDate").value;
+      it.code = document.getElementById("editCode").value.trim();
+      it.name = document.getElementById("editName").value.trim();
+      it.shelves = document.getElementById("editShelves").value.trim();
+      let stockVal = parseInt(document.getElementById("editStock").value);
+      if(isNaN(stockVal) || stockVal < 0){ alert("Invalid stock!"); return; }
+      it.stock = stockVal;
+      it.supplier = document.getElementById("editSupplier").value;
+      it.price = parseFloat(document.getElementById("editPrice").value) || 0;
+      // auto-clear reorder if stock now meets reorder qty
+      if(it.reorder && it.stock >= it.reorder.qty){ delete it.reorder; }
+      saveData(); renderTable(); closeModal("editModal");
+      editIndex = null;
+    }
+
+    // Reorder flow
+    function openReorder(i){
+      reorderIndex = i;
+      let it = inventory[i] || {};
+      document.getElementById("reorderName").innerText = it.name || "";
+      document.getElementById("reorderQty").value = "";
+      document.getElementById("reorderUnit").value = "pcs";
+      document.getElementById("reorderModal").style.display = "flex";
+    }
+
+    function saveReorder(){
+      let qty = parseInt(document.getElementById("reorderQty").value);
+      let unit = document.getElementById("reorderUnit").value;
+      if(isNaN(qty) || qty <= 0){ alert("Enter valid quantity"); return; }
+      inventory[reorderIndex].reorder = { qty: qty, unit: unit };
+      saveData(); renderTable(); closeModal("reorderModal");
+      reorderIndex = null;
+    }
+
+    function resetReorder(){
+      if(confirm("Clear all reorder flags?")){
+        inventory.forEach(it => { delete it.reorder; });
+        saveData(); renderTable();
+      }
+    }
+
+    // Close modal helper
+    function closeModal(id){ document.getElementById(id).style.display = "none"; }
+
+    // Search/filter
+    function searchItem(){
+      let f = document.getElementById("search").value.toLowerCase();
+      document.querySelectorAll("#inventoryTable tbody tr").forEach(r=>{
+        let code = r.cells[1].innerText || "";
+        let name = r.cells[2].innerText || "";
+        let supplier = r.cells[5].innerText || "";
+        let rowText = `${code} ${name} ${supplier}`.toLowerCase();
+        r.style.display = rowText.includes(f) ? "" : "none";
+      });
+    }
+
+    // PDF export per supplier, font size 8, header text as requested
+    function generatePDF(supplier){
+      const { jsPDF } = window.jspdf;
+      let doc = new jsPDF({ unit: "pt" });
+      // Header - text only
+      doc.setFont("helvetica");
+      doc.setFontSize(8); // boss asked size 8 for PDF
+      doc.text("Mara Drug Traders Corporation", 40, 40);
+      doc.text(`Order List - ${supplier}`, 40, 56);
+      doc.text("Date: " + new Date().toLocaleDateString(), 40, 72);
+
+      // Column headers
+      let y = 92;
+      doc.setFontSize(8);
+      doc.text("Qty", 40, y);
+      doc.text("Unit", 80, y);
+      doc.text("Medicine", 140, y);
+      doc.text("Code", 380, y);
+      y += 14;
+
+      // Rows: filter inventory by supplier & reorder flag
+      inventory.filter(it => it.supplier === supplier && it.reorder).forEach(it => {
+        if(y > 740){ doc.addPage(); y = 40; doc.setFontSize(8); }
+        doc.text(String(it.reorder.qty), 40, y);
+        doc.text(it.reorder.unit || "", 80, y);
+        doc.text(it.name || "", 140, y);
+        doc.text(it.code || "-", 380, y);
+        y += 12;
+      });
+
+      doc.save(`${supplier}_orders.pdf`);
+    }
+
+    // On load: render options, clear reorders if already satisfied, set date
+    window.onload = function(){
+      renderSupplierOptions();
+      // auto-clear reorder if stock already sufficient
+      inventory.forEach(item => { if(item.reorder && item.stock >= item.reorder.qty) delete item.reorder; });
+      setToday();
+      renderTable();
+    }
+
+    // close modal when clicking outside
+    window.onclick = function(e){ if(e.target.classList.contains('modal')) e.target.style.display='none'; }
+  </script>
+</body>
+</html>
